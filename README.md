@@ -3,12 +3,11 @@
 ![MIT License](https://img.shields.io/badge/license-MIT-green)
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/28458100-0f2f-48c9-9b38-06e075856ec2" alt="Centered Image" width="500">
+  <img src="https://github.com/user-attachments/assets/49f79b69-d9c0-4dca-b707-cb28c05289ae" alt="Centered Image" width="500">
 </p>
 <hr />
 
 A Model Context Protocol (MCP) server for analyzing browser extension security. This server provides tools for querying, analyzing, and evaluating security aspects of browser extensions including vulnerability detection, signature checking, code review, and more.
-
 
 
 
