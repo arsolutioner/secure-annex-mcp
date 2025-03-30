@@ -4,6 +4,9 @@
 
 A Model Context Protocol (MCP) server for analyzing browser extension security. This server provides tools for querying, analyzing, and evaluating security aspects of browser extensions including vulnerability detection, signature checking, code review, and more.
 
+![Uploading image.png…]()
+
+
 ## Quick Setup
 
 No manual Python environment setup is needed. This MCP server is designed to work with Claude Desktop, which automatically handles all dependencies using the `uv` package manager and the included `pyproject.toml` file.
