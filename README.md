@@ -4,7 +4,7 @@
 
 A Model Context Protocol (MCP) server for analyzing browser extension security. This server provides tools for querying, analyzing, and evaluating security aspects of browser extensions including vulnerability detection, signature checking, code review, and more.
 
-![Uploading image.png…]()
+![image](https://github.com/user-attachments/assets/82e029e2-4658-4ed7-b142-525b9be76f21)
 
 
 ## Quick Setup
