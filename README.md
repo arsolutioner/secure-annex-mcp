@@ -1,4 +1,3 @@
-# SecureAnnex MCP Server
 
 ![MIT License](https://img.shields.io/badge/license-MIT-green)
 
@@ -7,6 +6,7 @@
 </p>
 <hr />
 
+# SecureAnnex MCP Server
 A Model Context Protocol (MCP) server for analyzing browser extension security. This server provides tools for querying, analyzing, and evaluating security aspects of browser extensions including vulnerability detection, signature checking, code review, and more.
 
 
