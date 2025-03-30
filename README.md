@@ -3,7 +3,7 @@
 ![MIT License](https://img.shields.io/badge/license-MIT-green)
 
 <p align="center">
-  <img src="![image](https://github.com/user-attachments/assets/28458100-0f2f-48c9-9b38-06e075856ec2)" alt="Centered Image" width="500">
+  <img src="https://github.com/user-attachments/assets/28458100-0f2f-48c9-9b38-06e075856ec2" alt="Centered Image" width="500">
 </p>
 <hr />
 
