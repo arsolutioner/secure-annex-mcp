@@ -19,6 +19,9 @@ To get started:
 1. Download or clone this repository
 2. Make sure the `pyproject.toml` file is in the project directory
 3. Configure Claude Desktop as shown below
+4. Optional: If Claude can't find the `uv` command, use the absolute path instead, You can find the absolute path by running `which uv` in your terminal.
+
+
 
 ## Claude Desktop Configuration
 
@@ -225,11 +228,3 @@ If you encounter any issues:
 
 1. Ensure your API key is correctly set in the environment variables
 2. Verify the path in your Claude Desktop configuration is correct
-
-## Running Directly (Without Claude Desktop)
-
-If you prefer to run the MCP server directly:
-
-```bash
-SECUREANNEX_API_KEY=your_api_key_here uv run secure_annex_mcp
-```
