@@ -1,4 +1,3 @@
-
 ![MIT License](https://img.shields.io/badge/license-MIT-green)
 
 <p align="center">
@@ -45,29 +44,6 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```
 
 **Note**: Replace `/path/to/secure-annex-mcp` with the absolute path to your SecureAnnex MCP server directory.
-
-**Alternative Configuration**: If the simpler configuration above doesn't work in your environment, you can use the more explicit version with `python -m`:
-
-```json
-{
-  "mcpServers": {
-    "secureannex": {
-      "command": "uv",
-      "args": [
-        "--directory",
-        "/path/to/secure-annex-mcp",
-        "run",
-        "python",
-        "-m",
-        "secure_annex_mcp"
-      ],
-      "env": {
-        "SECUREANNEX_API_KEY": "your_api_key_here"
-      }
-    }
-  }
-}
-```
 
 ## Project Structure
 
@@ -126,22 +102,116 @@ secure-annex-mcp/
 
 ## Example Usage
 
-Here are some examples of how to use the tools in Claude:
+Here are some practical examples of how to use the tools with Claude:
+
+### Searching for Extensions
 
 ```
-# Search for extensions
+# Get all extensions developed by specific developer
+I need to find all extensions by help@getadblock.com
+
+# Claude would use:
 {
-  "name": "AdBlock"
+  "name": "search_extensions",
+  "arguments": {
+    "owner": "help@getadblock.com"
+  }
+}
+```
+
+### Security Analysis
+
+```
+# Get all security signatures for an extension
+Show me all security signatures for the AdBlock extension
+
+# Claude would use:
+{
+  "name": "get_extension_signatures",
+  "arguments": {
+    "extension_id": "gighmmpiobklfepjocnamgkkbiglidom"
+  }
 }
 
-# Get details for a specific extension
+# Extract all network domains from an extension
+Extract all domains embedded in the AdBlock extension
+
+# Claude would use:
 {
-  "extension_id": "gighmmpiobklfepjocnamgkkbiglidom"
+  "name": "get_extension_urls",
+  "arguments": {
+    "extension_id": "gighmmpiobklfepjocnamgkkbiglidom"
+  }
 }
 
-# Get security vulnerabilities
+# Analyze manifest permissions
+Show me a table of all permissions requested by AdBlock with explanations
+
+# Claude would use:
 {
-  "extension_id": "gighmmpiobklfepjocnamgkkbiglidom"
+  "name": "get_extension_manifest_risks",
+  "arguments": {
+    "extension_id": "gighmmpiobklfepjocnamgkkbiglidom"
+  }
+}
+```
+
+### Integration with Other MCPs
+
+```
+# Leveraging VirusTotal MCP for domain reputation
+Can you extract all domains from the AdBlock extension and check their reputation on VirusTotal?
+
+# Claude would use both SecureAnnex and VirusTotal MCPs:
+# 1. First, get domains from SecureAnnex
+{
+  "name": "get_extension_urls",
+  "arguments": {
+    "extension_id": "gighmmpiobklfepjocnamgkkbiglidom"
+  }
+}
+
+# 2. Then for each domain, check VirusTotal
+{
+  "name": "domain_report",  // VirusTotal MCP tool
+  "arguments": {
+    "domain": "example.com"  // For each domain found
+  }
+}
+
+# 3. Claude would compile results into a table:
+| Domain | Reputation | Detection Ratio | Categories |
+|--------|------------|-----------------|------------|
+| domain1.com | Clean | 0/85 | Advertising |
+| domain2.com | Suspicious | 3/85 | Marketing |
+```
+
+### Comprehensive Analysis
+
+```
+# Request a complete security review of an extension
+Perform a full security audit of the AdBlock extension
+
+# Claude would combine multiple tools:
+{
+  "name": "get_extension_details",
+  "arguments": {
+    "extension_id": "gighmmpiobklfepjocnamgkkbiglidom"
+  }
+}
+
+{
+  "name": "get_extension_vulnerabilities",
+  "arguments": {
+    "extension_id": "gighmmpiobklfepjocnamgkkbiglidom"
+  }
+}
+
+{
+  "name": "get_extension_analysis",
+  "arguments": {
+    "extension_id": "gighmmpiobklfepjocnamgkkbiglidom"
+  }
 }
 ```
 
@@ -156,7 +226,10 @@ If you encounter any issues:
 1. Ensure your API key is correctly set in the environment variables
 2. Verify the path in your Claude Desktop configuration is correct
 
-For detailed logs, run the server in debug mode:
+## Running Directly (Without Claude Desktop)
+
+If you prefer to run the MCP server directly:
 
 ```bash
-SECUREANNEX_API_KEY=your_api_key_here python -m secure_annex_mcp
+SECUREANNEX_API_KEY=your_api_key_here uv run secure_annex_mcp
+```
