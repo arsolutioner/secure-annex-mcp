@@ -307,28 +307,32 @@ async def list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="get_extension_signatures",
-            description="Get security signatures for a specific extension.",
+            description="Get security signatures for extensions, filterable by rule, name, or extension.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "extension_id": {"type": "string", "description": "The ID of the extension"},
                     "version": {"type": "string", "description": "Filter by specific version"},
-                    "rule": {"type": "string", "description": "Filter by signature rule"}
+                    "rule": {"type": "string", "description": "Filter by signature rule"},
+                    "name": {"type": "string", "description": "Filter by name"},
+                    "limit": {"type": "integer", "description": "Optional: Maximum number of results to return (default: all)"}
                 },
-                "required": ["extension_id"],
+                "required": [],
             },
         ),
         types.Tool(
             name="get_extension_urls",
-            description="Get network URLs used by a specific extension.",
+            description="Get network URLs used by a specific extension or by domain.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "extension_id": {"type": "string", "description": "The ID of the extension"},
                     "version": {"type": "string", "description": "Filter by specific version"},
-                    "domain": {"type": "string", "description": "Filter by domain"}
+                    "domain": {"type": "string", "description": "Filter by domain"},
+                    "url": {"type": "string", "description": "Filter by URL"},
+                    "limit": {"type": "integer", "description": "Optional: Maximum number of results to return (default: all)"}
                 },
-                "required": ["extension_id"],
+                "required": [],
             },
         ),
         types.Tool(
@@ -339,7 +343,9 @@ async def list_tools() -> list[types.Tool]:
                 "properties": {
                     "extension_id": {"type": "string", "description": "The ID of the extension"},
                     "version": {"type": "string", "description": "Filter by specific version"},
-                    "risk_type": {"type": "string", "description": "Filter by risk type"}
+                    "risk_type": {"type": "string", "description": "Filter by risk type"},
+                    "risk_id": {"type": "string", "description": "Filter by risk ID"},
+                    "limit": {"type": "integer", "description": "Optional: Maximum number of results to return (default: all)"}
                 },
                 "required": ["extension_id"],
             },
@@ -554,28 +560,82 @@ async def handle_call_tool(name: str, arguments: Optional[Dict[str, Any]]) -> li
             )]
 
         elif name == "get_extension_signatures":
-            extension_id = arguments.get("extension_id")
-            if not extension_id:
-                return [types.TextContent(type="text", text="Error: extension_id is required")]
+            params = {}
+            limit = arguments.get("limit")  # Optional max results
             
-            params = {"extension_id": extension_id}
-            if "version" in arguments:
-                params["version"] = arguments["version"]
-            if "rule" in arguments:
-                params["rule"] = arguments["rule"]
+            # Add all valid parameters to the query
+            for param in ["extension_id", "version", "rule", "name"]:
+                if param in arguments and arguments[param]:
+                    params[param] = arguments[param]
             
+            # Validate that at least one search parameter is provided
+            if not any(k in params for k in ["extension_id", "rule", "name"]):
+                return [types.TextContent(
+                    type="text", 
+                    text="Error: At least one of extension_id, rule, or name is required"
+                )]
+            
+            # Set maximum page size to reduce API calls
+            params["page_size"] = 100  # Maximum allowed
+            
+            # First, get just page 1 and check total
             data = await fetch_from_api("signatures", params)
             
             if "error" in data:
                 return [types.TextContent(type="text", text=f"Error: {data['error']}")]
             
-            # Cache the results
-            cache["signatures"][extension_id] = {"data": data.get("result", []), "timestamp": time.time()}
+            all_results = data.get("result", [])
+            total_count = data.get("total_count", 0)
+            total_pages = data.get("total_pages", 1)
             
-            if not data.get("result"):
+            # Early return if we have all results or hit the limit
+            if total_pages <= 1 or (limit and len(all_results) >= limit):
+                if limit and len(all_results) > limit:
+                    all_results = all_results[:limit]  # Respect the limit
+            else:
+                # Calculate how many more pages we need
+                if limit:
+                    # If we have a limit, only fetch enough pages to reach it
+                    items_needed = max(0, limit - len(all_results))
+                    # Calculate how many more pages needed to reach limit
+                    pages_needed = min(total_pages - 1, (items_needed + params["page_size"] - 1) // params["page_size"])
+                else:
+                    # No limit, fetch all remaining pages
+                    pages_needed = total_pages - 1
+                
+                # Only fetch more pages if needed
+                if pages_needed > 0:
+                    # Fetch remaining pages in parallel to reduce time
+                    async def fetch_page(page_num):
+                        page_params = params.copy()
+                        page_params["page"] = page_num
+                        return await fetch_from_api("signatures", page_params)
+                    
+                    # Create tasks for remaining pages
+                    tasks = [fetch_page(i+2) for i in range(pages_needed)]
+                    page_results = await asyncio.gather(*tasks)
+                    
+                    # Process results from all pages
+                    for page_data in page_results:
+                        if not "error" in page_data and page_data.get("result"):
+                            all_results.extend(page_data["result"])
+                            
+                            # Break early if we've reached our limit
+                            if limit and len(all_results) >= limit:
+                                break
+                    
+                    # Respect the limit if specified
+                    if limit and len(all_results) > limit:
+                        all_results = all_results[:limit]
+            
+            # Cache the results (only for specific extension_id queries)
+            if "extension_id" in params:
+                cache["signatures"][params["extension_id"]] = {"data": all_results, "timestamp": time.time()}
+            
+            if not all_results:
                 return [types.TextContent(
                     type="text",
-                    text=f"No signatures found for extension {extension_id}"
+                    text=f"No signatures found"
                 )]
             
             # Format the signatures in a readable way
@@ -584,52 +644,17 @@ async def handle_call_tool(name: str, arguments: Optional[Dict[str, Any]]) -> li
                 f"Severity: {sig.get('meta', {}).get('severity', 'N/A')}\n"
                 f"Description: {sig.get('meta', {}).get('description', 'N/A')}\n"
                 f"File: {sig.get('file_path', 'N/A')}\n"
+                f"Extension ID: {sig.get('extension_id', 'N/A')}\n"
                 f"Version: {sig.get('version', 'N/A')}"
-                for sig in data.get("result", [])
+                for sig in all_results
             ])
+            
+            # Include limiting info in result if applicable
+            result_count_text = f"Total found: {total_count}" if not limit or len(all_results) == total_count else f"Showing {len(all_results)} of {total_count} total"
             
             return [types.TextContent(
                 type="text",
-                text=f"Security signatures for extension {extension_id}:\n\n{sigs_text}"
-            )]
-
-        elif name == "get_extension_urls":
-            extension_id = arguments.get("extension_id")
-            if not extension_id:
-                return [types.TextContent(type="text", text="Error: extension_id is required")]
-            
-            params = {"extension_id": extension_id}
-            if "version" in arguments:
-                params["version"] = arguments["version"]
-            if "domain" in arguments:
-                params["domain"] = arguments["domain"]
-            
-            data = await fetch_from_api("urls", params)
-            
-            if "error" in data:
-                return [types.TextContent(type="text", text=f"Error: {data['error']}")]
-            
-            # Cache the results
-            cache["urls"][extension_id] = {"data": data.get("result", []), "timestamp": time.time()}
-            
-            if not data.get("result"):
-                return [types.TextContent(
-                    type="text",
-                    text=f"No URLs found for extension {extension_id}"
-                )]
-            
-            # Format the URLs in a readable way
-            urls_text = "\n\n".join([
-                f"URL: {url.get('url', 'N/A')}\n"
-                f"Domain: {url.get('domain', 'N/A')}\n"
-                f"File: {url.get('file_path', 'N/A')}\n"
-                f"Version: {url.get('version', 'N/A')}"
-                for url in data.get("result", [])
-            ])
-            
-            return [types.TextContent(
-                type="text",
-                text=f"URLs for extension {extension_id}:\n\n{urls_text}"
+                text=f"Security signatures ({result_count_text}):\n\n{sigs_text}"
             )]
 
         elif name == "get_extension_manifest_risks":
@@ -638,20 +663,70 @@ async def handle_call_tool(name: str, arguments: Optional[Dict[str, Any]]) -> li
                 return [types.TextContent(type="text", text="Error: extension_id is required")]
             
             params = {"extension_id": extension_id}
-            if "version" in arguments:
-                params["version"] = arguments["version"]
-            if "risk_type" in arguments:
-                params["risk_type"] = arguments["risk_type"]
+            limit = arguments.get("limit")  # Optional max results
             
+            # Add optional parameters
+            for param in ["version", "risk_type", "risk_id"]:
+                if param in arguments and arguments[param]:
+                    params[param] = arguments[param]
+            
+            # Set maximum page size to reduce API calls
+            params["page_size"] = 100  # Maximum allowed
+            
+            # First, get just page 1 and check total
             data = await fetch_from_api("manifest", params)
             
             if "error" in data:
                 return [types.TextContent(type="text", text=f"Error: {data['error']}")]
             
-            # Cache the results
-            cache["manifest"][extension_id] = {"data": data.get("result", []), "timestamp": time.time()}
+            all_results = data.get("result", [])
+            total_count = data.get("total_count", 0)
+            total_pages = data.get("total_pages", 1)
             
-            if not data.get("result"):
+            # Early return if we have all results or hit the limit
+            if total_pages <= 1 or (limit and len(all_results) >= limit):
+                if limit and len(all_results) > limit:
+                    all_results = all_results[:limit]  # Respect the limit
+            else:
+                # Calculate how many more pages we need
+                if limit:
+                    # If we have a limit, only fetch enough pages to reach it
+                    items_needed = max(0, limit - len(all_results))
+                    # Calculate how many more pages needed to reach limit
+                    pages_needed = min(total_pages - 1, (items_needed + params["page_size"] - 1) // params["page_size"])
+                else:
+                    # No limit, fetch all remaining pages
+                    pages_needed = total_pages - 1
+                
+                # Only fetch more pages if needed
+                if pages_needed > 0:
+                    # Fetch remaining pages in parallel to reduce time
+                    async def fetch_page(page_num):
+                        page_params = params.copy()
+                        page_params["page"] = page_num
+                        return await fetch_from_api("manifest", page_params)
+                    
+                    # Create tasks for remaining pages
+                    tasks = [fetch_page(i+2) for i in range(pages_needed)]
+                    page_results = await asyncio.gather(*tasks)
+                    
+                    # Process results from all pages
+                    for page_data in page_results:
+                        if not "error" in page_data and page_data.get("result"):
+                            all_results.extend(page_data["result"])
+                            
+                            # Break early if we've reached our limit
+                            if limit and len(all_results) >= limit:
+                                break
+                    
+                    # Respect the limit if specified
+                    if limit and len(all_results) > limit:
+                        all_results = all_results[:limit]
+            
+            # Cache the results
+            cache["manifest"][extension_id] = {"data": all_results, "timestamp": time.time()}
+            
+            if not all_results:
                 return [types.TextContent(
                     type="text",
                     text=f"No manifest risks found for extension {extension_id}"
@@ -664,12 +739,111 @@ async def handle_call_tool(name: str, arguments: Optional[Dict[str, Any]]) -> li
                 f"Severity: {risk.get('severity', 'N/A')}/10\n"
                 f"Description: {risk.get('description', 'N/A')}\n"
                 f"Snippet: {risk.get('snippet', 'N/A')}"
-                for risk in data.get("result", [])
+                for risk in all_results
             ])
+            
+            # Include limiting info in result if applicable
+            result_count_text = f"Total found: {total_count}" if not limit or len(all_results) == total_count else f"Showing {len(all_results)} of {total_count} total"
             
             return [types.TextContent(
                 type="text",
-                text=f"Manifest risks for extension {extension_id}:\n\n{risks_text}"
+                text=f"Manifest risks for extension {extension_id} ({result_count_text}):\n\n{risks_text}"
+            )]
+
+        elif name == "get_extension_urls":
+            params = {}
+            limit = arguments.get("limit")  # Optional max results
+            
+            # Add all valid parameters to the query
+            for param in ["extension_id", "version", "domain", "url"]:
+                if param in arguments and arguments[param]:
+                    params[param] = arguments[param]
+            
+            # Validate that at least one search parameter is provided
+            if not any(k in params for k in ["extension_id", "domain", "url"]):
+                return [types.TextContent(
+                    type="text", 
+                    text="Error: At least one of extension_id, domain, or url is required"
+                )]
+            
+            # Set maximum page size to reduce API calls
+            params["page_size"] = 100  # Maximum allowed
+            
+            # First, get just page 1 and check total
+            data = await fetch_from_api("urls", params)
+            
+            if "error" in data:
+                return [types.TextContent(type="text", text=f"Error: {data['error']}")]
+            
+            all_results = data.get("result", [])
+            total_count = data.get("total_count", 0)
+            total_pages = data.get("total_pages", 1)
+            
+            # Early return if we have all results or hit the limit
+            if total_pages <= 1 or (limit and len(all_results) >= limit):
+                if limit and len(all_results) > limit:
+                    all_results = all_results[:limit]  # Respect the limit
+            else:
+                # Calculate how many more pages we need
+                if limit:
+                    # If we have a limit, only fetch enough pages to reach it
+                    items_needed = max(0, limit - len(all_results))
+                    # Calculate how many more pages needed to reach limit
+                    pages_needed = min(total_pages - 1, (items_needed + params["page_size"] - 1) // params["page_size"])
+                else:
+                    # No limit, fetch all remaining pages
+                    pages_needed = total_pages - 1
+                
+                # Only fetch more pages if needed
+                if pages_needed > 0:
+                    # Fetch remaining pages in parallel to reduce time
+                    async def fetch_page(page_num):
+                        page_params = params.copy()
+                        page_params["page"] = page_num
+                        return await fetch_from_api("urls", page_params)
+                    
+                    # Create tasks for remaining pages
+                    tasks = [fetch_page(i+2) for i in range(pages_needed)]
+                    page_results = await asyncio.gather(*tasks)
+                    
+                    # Process results from all pages
+                    for page_data in page_results:
+                        if not "error" in page_data and page_data.get("result"):
+                            all_results.extend(page_data["result"])
+                            
+                            # Break early if we've reached our limit
+                            if limit and len(all_results) >= limit:
+                                break
+                    
+                    # Respect the limit if specified
+                    if limit and len(all_results) > limit:
+                        all_results = all_results[:limit]
+            
+            # Cache the results (only for specific extension_id queries)
+            if "extension_id" in params:
+                cache["urls"][params["extension_id"]] = {"data": all_results, "timestamp": time.time()}
+            
+            if not all_results:
+                return [types.TextContent(
+                    type="text",
+                    text=f"No URLs found"
+                )]
+            
+            # Format the URLs in a readable way
+            urls_text = "\n\n".join([
+                f"URL: {url.get('url', 'N/A')}\n"
+                f"Domain: {url.get('domain', 'N/A')}\n"
+                f"File: {url.get('file_path', 'N/A')}\n"
+                f"Version: {url.get('version', 'N/A')}"
+                for url in all_results
+            ])
+            
+            # Include limiting info in result if applicable
+            result_count_text = f"Total found: {total_count}" if not limit or len(all_results) == total_count else f"Showing {len(all_results)} of {total_count} total"
+            
+            return [types.TextContent(
+                type="text",
+                text=f"URLs ({result_count_text}):\n\n{urls_text}"
             )]
 
         elif name == "get_extension_analysis":

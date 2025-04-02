@@ -34,8 +34,6 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
         "--directory",
         "/path/to/secure-annex-mcp",
         "run",
-        "python",
-        "-m",
         "secure_annex_mcp"
       ],
       "env": {
@@ -47,6 +45,29 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```
 
 **Note**: Replace `/path/to/secure-annex-mcp` with the absolute path to your SecureAnnex MCP server directory.
+
+**Alternative Configuration**: If the simpler configuration above doesn't work in your environment, you can use the more explicit version with `python -m`:
+
+```json
+{
+  "mcpServers": {
+    "secureannex": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/secure-annex-mcp",
+        "run",
+        "python",
+        "-m",
+        "secure_annex_mcp"
+      ],
+      "env": {
+        "SECUREANNEX_API_KEY": "your_api_key_here"
+      }
+    }
+  }
+}
+```
 
 ## Project Structure
 
